@@ -6,19 +6,27 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerController : MonoBehaviour
 {
-    [SerializeField] float speed;
+    [SerializeField] float baseSpeed;
+    [SerializeField] float sneakySpeed;
+    [SerializeField] float sprintSpeed;
     [SerializeField] float rotationSpeed;
     [SerializeField] float cameraFollowSpeed;
     [SerializeField] float jumpForce;
     [SerializeField] float raycastOffset;
+    [SerializeField] Animator animator;
 
     Rigidbody playerRb;
+    float maxDistance = 1.1f;
     float horizontalInput;
     float verticalInput;
     bool canJump;
     bool doJump;
     bool isSneaky;
     Vector3 direction;
+    bool isOnEdge;
+    bool isLanding;
+    bool sprint;
+    float speed;
 
 
     // Start is called before the first frame update
@@ -30,28 +38,53 @@ public class PlayerController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        horizontalInput = Input.GetAxis("Horizontal");
-        verticalInput = Input.GetAxis("Vertical");
+        GetInputs();
+
+        AnimatorSetters();
 
         canJump = CheckGround();
 
+        if (playerRb.velocity.y > 0) isLanding = false;
         if (canJump && Input.GetButtonDown("Jump")) doJump = true;
 
         direction = (horizontalInput * Camera.main.transform.right) + (verticalInput * Camera.main.transform.forward).normalized;
         direction.y = 0;
 
+        if (sprint) speed = sprintSpeed;
+        else if (isSneaky) speed = sneakySpeed;
+        else speed = baseSpeed;
+
+    }
+
+    private void GetInputs()
+    {
+        horizontalInput = Input.GetAxis("Horizontal");
+        verticalInput = Input.GetAxis("Vertical");
         if (Input.GetButtonDown("Stealth")) isSneaky = !isSneaky;
+        sprint = Input.GetButton("Sprint");
+    }
+
+    private void AnimatorSetters()
+    {
+        animator.SetFloat("HorizontalInput", horizontalInput);
+        animator.SetFloat("VerticalInput", verticalInput);
+        animator.SetFloat("DirectionMagnitude", direction.magnitude);
+        animator.SetBool("isOnEdge", isOnEdge);
+        animator.SetBool("Sprint", sprint);
+        animator.SetBool("isLanding", isLanding);
+        animator.SetBool("isSneaky", isSneaky);
     }
 
     private bool CheckGround()
     {
+        int rayCastCount = 0;
         bool ground = false;
         Ray ray;
         for (int i = 0; i < 5; i++)
         {
             if (i == 0)
             {
-                ray = new Ray(transform.position + new Vector3(0, 0.9f, 0), Vector3.down);
+                ray = new Ray(transform.position + Vector3.up, Vector3.down);
             }
             else
             {
@@ -59,13 +92,30 @@ public class PlayerController : MonoBehaviour
                 Debug.DrawRay(transform.localPosition + Vector3.up + (Quaternion.Euler(0, i * 90f, 0) * Vector3.right * raycastOffset), Vector3.down, Color.blue);
             }
 
-            Physics.Raycast(ray, out RaycastHit hit, 1.1f);
+            if (playerRb.velocity.y < 0) maxDistance = 2f;
+            else maxDistance = 1.1f;
+
+            Physics.Raycast(ray, out RaycastHit hit, maxDistance);
+
             if (hit.transform != null)
             {
-                if (hit.transform.CompareTag("Ground")) ground = true; return ground;
+                if (hit.transform.CompareTag("Ground"))
+                {
+                    rayCastCount++;
+                }
             }
         }
-
+        if (rayCastCount > 1)
+        {
+            if (playerRb.velocity.y < 0) isLanding = true;
+            else ground = true;
+            
+            if (rayCastCount < 3)
+            {
+                isOnEdge = true;
+            }
+            else isOnEdge = false;
+        }
         return ground;
     }
 
@@ -87,15 +137,6 @@ public class PlayerController : MonoBehaviour
         {
             Jump();
         }
-
-        if (isSneaky)
-        {
-            transform.localScale = Vector3.one * 0.4f;
-        }
-        else
-        {
-            transform.localScale = Vector3.one;
-        }
     }
 
     private void Move()
@@ -105,6 +146,7 @@ public class PlayerController : MonoBehaviour
 
     private void Jump()
     {
+        animator.SetTrigger("Jump");
         playerRb.AddForce(jumpForce * Vector3.up, ForceMode.VelocityChange);
         doJump = false;
     }
