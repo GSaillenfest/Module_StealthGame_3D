@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Cinemachine;
 
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerController : MonoBehaviour
@@ -14,6 +15,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] float jumpForce;
     [SerializeField] float raycastOffset;
     [SerializeField] Animator animator;
+    [SerializeField] Transform focusPoint;
+    public Cinemachine.CinemachineFreeLook fl;
 
     Rigidbody playerRb;
     float maxDistance = 1.1f;
@@ -23,16 +26,21 @@ public class PlayerController : MonoBehaviour
     bool doJump;
     bool isSneaky;
     Vector3 direction;
+    float signedAngle;
     bool isOnEdge;
     bool isLanding;
+    bool isFalling;
     bool sprint;
     float speed;
+    public bool test;
+    bool isAiming;
 
 
     // Start is called before the first frame update
     void Start()
     {
         playerRb = GetComponent<Rigidbody>();
+        fl.m_YAxisRecentering = new AxisState.Recentering();
     }
 
     // Update is called once per frame
@@ -47,21 +55,63 @@ public class PlayerController : MonoBehaviour
         if (playerRb.velocity.y > 0) isLanding = false;
         if (canJump && Input.GetButtonDown("Jump")) doJump = true;
 
-        direction = (horizontalInput * Camera.main.transform.right) + (verticalInput * Camera.main.transform.forward).normalized;
+        direction = (horizontalInput * Camera.main.transform.right) + (verticalInput * Camera.main.transform.forward);
         direction.y = 0;
 
+        signedAngle = Vector3.SignedAngle(transform.forward, Camera.main.transform.forward, Vector3.up);
+
+        if (signedAngle < -150 || signedAngle > 150)
+        {
+            test = true;
+            fl.m_YAxisRecentering = new AxisState.Recentering(false, 1f, 2f);
+        }
+        else test = false;
+        SetSpeed();
+
+        if (isAiming)
+        {
+            animator.SetLayerWeight(0, 0);
+            animator.SetLayerWeight(1, 1);
+        }
+        else
+        {
+
+            animator.SetLayerWeight(0, 1);
+            animator.SetLayerWeight(1, 0);
+        }
+    }
+
+    private void SetSpeed()
+    {
         if (sprint) speed = sprintSpeed;
         else if (isSneaky) speed = sneakySpeed;
+        else if (!canJump) speed = baseSpeed * 0.5f;
         else speed = baseSpeed;
-
     }
 
     private void GetInputs()
     {
         horizontalInput = Input.GetAxis("Horizontal");
+        
         verticalInput = Input.GetAxis("Vertical");
+        
         if (Input.GetButtonDown("Stealth")) isSneaky = !isSneaky;
+        
         sprint = Input.GetButton("Sprint");
+        
+        if (Input.GetButtonDown("Aim"))
+        {
+            isAiming = !isAiming;
+            if (isAiming)
+            {
+                fl.LookAt = ChoseTarget();
+            }
+            else
+            {
+                fl.LookAt = focusPoint;
+            }
+        }
+
     }
 
     private void AnimatorSetters()
@@ -89,11 +139,11 @@ public class PlayerController : MonoBehaviour
             else
             {
                 ray = new Ray(transform.localPosition + Vector3.up + (Quaternion.Euler(0, i * 90f, 0) * Vector3.right * raycastOffset), Vector3.down);
-                Debug.DrawRay(transform.localPosition + Vector3.up + (Quaternion.Euler(0, i * 90f, 0) * Vector3.right * raycastOffset), Vector3.down, Color.blue);
+                //Debug.DrawRay(transform.localPosition + Vector3.up + (Quaternion.Euler(0, i * 90f, 0) * Vector3.right * raycastOffset), Vector3.down, Color.blue);
             }
 
             if (playerRb.velocity.y < 0) maxDistance = 2f;
-            else maxDistance = 1.1f;
+            else maxDistance = 1.2f;
 
             Physics.Raycast(ray, out RaycastHit hit, maxDistance);
 
@@ -105,12 +155,13 @@ public class PlayerController : MonoBehaviour
                 }
             }
         }
-        if (rayCastCount > 1)
+        Debug.Log(rayCastCount);
+        if (rayCastCount > 0)
         {
             if (playerRb.velocity.y < 0) isLanding = true;
-            else ground = true;
-            
-            if (rayCastCount < 3)
+            ground = true;
+
+            if (rayCastCount == 3)
             {
                 isOnEdge = true;
             }
@@ -121,17 +172,18 @@ public class PlayerController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (direction.magnitude != 0)
+
+        if (isAiming)
         {
-            Quaternion lookRotation = Quaternion.LookRotation(direction);
-            Quaternion rotation = Quaternion.RotateTowards(playerRb.rotation, lookRotation, 500 * Time.fixedDeltaTime);
-            playerRb.MoveRotation(rotation);
+            RotateTowardsCamera();
+            MoveAiming();
+        }
+        else
+        {
+            Move();
+            RotateTowardsInputDirection();
         }
 
-
-        Move();
-
-        //RotateTowardsCamera();
 
         if (doJump)
         {
@@ -139,9 +191,28 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    private void RotateTowardsInputDirection()
+    {
+        if (direction.magnitude != 0)
+        {
+            Quaternion lookRotation = Quaternion.LookRotation(direction);
+            Quaternion rotation = Quaternion.RotateTowards(playerRb.rotation, lookRotation, 500 * Time.fixedDeltaTime);
+            playerRb.MoveRotation(rotation);
+
+        }
+    }
+
     private void Move()
     {
-        playerRb.velocity = new Vector3(0, playerRb.velocity.y, 0) + (transform.forward * direction.magnitude) * speed;
+        playerRb.velocity = new Vector3(0, playerRb.velocity.y, 0) + (transform.forward * Mathf.Clamp01(direction.magnitude)) * speed;
+    }
+
+    private void MoveAiming()
+    {
+        Vector3 moveDirection = Camera.main.transform.forward * verticalInput + Camera.main.transform.right * horizontalInput;
+        moveDirection.y = playerRb.velocity.y;
+        Vector3.Normalize(moveDirection);
+        playerRb.velocity = new Vector3(moveDirection.x * speed, moveDirection.y, moveDirection.z * speed);
     }
 
     private void Jump()
@@ -159,5 +230,11 @@ public class PlayerController : MonoBehaviour
         Quaternion lookRotation = Quaternion.LookRotation(cameraForward);
         Quaternion rotation = Quaternion.RotateTowards(playerRb.rotation, lookRotation, cameraFollowSpeed * Time.fixedDeltaTime);
         playerRb.MoveRotation(rotation);
+    }
+
+    private Transform ChoseTarget()
+    {
+        
+        return Physics.OverlapSphere(transform.position, 100f, 8)[0].transform;
     }
 }
