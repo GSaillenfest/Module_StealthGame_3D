@@ -79,6 +79,13 @@ public class PlayerController : MonoBehaviour
             animator.SetLayerWeight(0, 1);
             animator.SetLayerWeight(1, 0);
         }
+
+        if (playerRb.velocity.y < -0.5f)
+        {
+            isFalling = true;
+        }
+        else isFalling = false;
+
     }
 
     private void SetSpeed()
@@ -119,10 +126,12 @@ public class PlayerController : MonoBehaviour
         animator.SetFloat("HorizontalInput", horizontalInput);
         animator.SetFloat("VerticalInput", verticalInput);
         animator.SetFloat("DirectionMagnitude", direction.magnitude);
+        animator.SetFloat("AngleBetweenForwardAndDirection", Vector3.SignedAngle(transform.forward, direction, Vector3.up));
         animator.SetBool("isOnEdge", isOnEdge);
         animator.SetBool("Sprint", sprint);
         animator.SetBool("isLanding", isLanding);
         animator.SetBool("isSneaky", isSneaky);
+        animator.SetBool("isFalling", isFalling);
     }
 
     private bool CheckGround()
@@ -234,7 +243,16 @@ public class PlayerController : MonoBehaviour
 
     private Transform ChoseTarget()
     {
-        
-        return Physics.OverlapSphere(transform.position, 100f, 8)[0].transform;
+        float minDistance = 100f;
+        Transform closestEnemy = focusPoint;
+        foreach (Collider enemy in Physics.OverlapSphere(transform.position, 100f, 8))
+        {
+            if (((enemy.transform.position - transform.position).magnitude) < minDistance)
+            {
+                minDistance = (enemy.transform.position - transform.position).magnitude;
+                closestEnemy = enemy.transform;
+            }
+        }
+        return closestEnemy;
     }
 }
