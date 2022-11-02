@@ -48,11 +48,11 @@ public class PlayerController : MonoBehaviour
     {
         GetInputs();
 
-        AnimatorSetters();
-
+        if (playerRb.velocity.y > 0) isLanding = false;
         canJump = CheckGround();
 
-        if (playerRb.velocity.y > 0) isLanding = false;
+        AnimatorSetters();
+
         if (canJump && Input.GetButtonDown("Jump")) doJump = true;
 
         direction = (horizontalInput * Camera.main.transform.right) + (verticalInput * Camera.main.transform.forward);
@@ -80,7 +80,7 @@ public class PlayerController : MonoBehaviour
             animator.SetLayerWeight(1, 0);
         }
 
-        if (playerRb.velocity.y < -0.5f)
+        if (!canJump & playerRb.velocity.y < -0.2f)
         {
             isFalling = true;
         }
@@ -99,13 +99,13 @@ public class PlayerController : MonoBehaviour
     private void GetInputs()
     {
         horizontalInput = Input.GetAxis("Horizontal");
-        
+
         verticalInput = Input.GetAxis("Vertical");
-        
+
         if (Input.GetButtonDown("Stealth")) isSneaky = !isSneaky;
-        
+
         sprint = Input.GetButton("Sprint");
-        
+
         if (Input.GetButtonDown("Aim"))
         {
             isAiming = !isAiming;
@@ -129,7 +129,7 @@ public class PlayerController : MonoBehaviour
         animator.SetFloat("AngleBetweenForwardAndDirection", Vector3.SignedAngle(transform.forward, direction, Vector3.up));
         animator.SetBool("isOnEdge", isOnEdge);
         animator.SetBool("Sprint", sprint);
-        animator.SetBool("isLanding", isLanding);
+        animator.SetBool("isLanding", canJump);
         animator.SetBool("isSneaky", isSneaky);
         animator.SetBool("isFalling", isFalling);
     }
@@ -139,6 +139,7 @@ public class PlayerController : MonoBehaviour
         int rayCastCount = 0;
         bool ground = false;
         Ray ray;
+        float distance = 0f;
         for (int i = 0; i < 5; i++)
         {
             if (i == 0)
@@ -151,8 +152,8 @@ public class PlayerController : MonoBehaviour
                 //Debug.DrawRay(transform.localPosition + Vector3.up + (Quaternion.Euler(0, i * 90f, 0) * Vector3.right * raycastOffset), Vector3.down, Color.blue);
             }
 
-            if (playerRb.velocity.y < 0) maxDistance = 2f;
-            else maxDistance = 1.2f;
+            if (playerRb.velocity.y < 0) maxDistance = 5f;
+            else maxDistance = 5f;
 
             Physics.Raycast(ray, out RaycastHit hit, maxDistance);
 
@@ -160,20 +161,30 @@ public class PlayerController : MonoBehaviour
             {
                 if (hit.transform.CompareTag("Ground"))
                 {
-                    rayCastCount++;
+                    if ((transform.position - hit.point).y < 0.1f) rayCastCount++;
+                    distance += (transform.position - hit.point).y;
                 }
             }
         }
-        Debug.Log(rayCastCount);
+        distance /= 5;
+
+        Debug.Log(rayCastCount + "    " + distance);
         if (rayCastCount > 0)
         {
-            if (playerRb.velocity.y < 0) isLanding = true;
-            ground = true;
+            //if (playerRb.velocity.y < 0 && distance > 0.1f && distance < 0.3f)
+            //{
+            //    isLanding = true;
+            //}
+            //else if (distance > 0.5f) isLanding = false;
+
+
 
             if (rayCastCount == 3)
             {
                 isOnEdge = true;
             }
+            // else if (rayCastCount <= 2) isFalling = true;
+            else if (rayCastCount > 3) ground = true;
             else isOnEdge = false;
         }
         return ground;
@@ -254,5 +265,21 @@ public class PlayerController : MonoBehaviour
             }
         }
         return closestEnemy;
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.gameObject.CompareTag("Enemy"))
+        {
+            other.gameObject.GetComponentInParent<Patrolling>().alert = true;
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.gameObject.CompareTag("Enemy"))
+        {
+            other.gameObject.GetComponentInParent<Patrolling>().StopDetection();
+        }
     }
 }
